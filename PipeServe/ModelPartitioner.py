@@ -1,37 +1,38 @@
 
 from copy import deepcopy
+from typing import List, Tuple, Optional, Any
 
 
 class ModelPartitioner:
-    def __init__(self, analysis, max_stage=None, max_layer_per_gpu=None):
-        self.analysis = analysis
-        self.layers = analysis.model_config.num_layers
-        self.max_stage = max_stage if max_stage else 1
-        self.max_layer_per_gpu = max_layer_per_gpu if max_layer_per_gpu else self.layers
+    def __init__(self, analysis: Any, max_stage: Optional[int] = None, max_layer_per_gpu: Optional[int] = None) -> None:
+        self.analysis: Any = analysis
+        self.layers: int = analysis.model_config.num_layers
+        self.max_stage: int = max_stage if max_stage else 1
+        self.max_layer_per_gpu: int = max_layer_per_gpu if max_layer_per_gpu else self.layers
 
         # Initialize required attributes for dfs methods
-        self.single_layer_prefill_latency = 0
-        self.single_layer_decode_latency = 0
-        self.transfer_p = 0
-        self.transfer_d = 0
+        self.single_layer_prefill_latency: float = 0
+        self.single_layer_decode_latency: float = 0
+        self.transfer_p: float = 0
+        self.transfer_d: float = 0
 
         # return 
-        self.G = []  # Partition result
-        self.delta = float('inf')  # Minimum difference
+        self.G: List[int] = []  # Partition result
+        self.delta: float = float('inf')  # Minimum difference
         
         # Add counters
-        self.dfs_count = 0
-        self.dfs_original_count = 0
+        self.dfs_count: int = 0
+        self.dfs_original_count: int = 0
 
-    def BBSearch(self, G, stage, layers, max_diff, prev):
+    def BBSearch(self, G: List[int], stage: int, layers: int, max_diff: float, prev: int) -> None:
         """branch-and-bound for layer partitioning
 
         Args:
             G (list): Partition result
-            stage (_type_): Current stage
-            layers (_type_): Number of layers already allocated
-            max_diff (_type_): Maximum prefill and decode latency difference from previous stages
-            prev (_type_): Number of layers in the previous stage
+            stage (int): Current stage
+            layers (int): Number of layers already allocated
+            max_diff (float): Maximum prefill and decode latency difference from previous stages
+            prev (int): Number of layers in the previous stage
         return:
             None
         """
@@ -64,14 +65,14 @@ class ModelPartitioner:
                 new_diff = max_diff
             self.BBSearch(G_, stage + 1, layers + layer_now, new_diff, layer_now)
 
-    def BBS_original(self, G, stage, layers, max_diff, prev):
+    def BBS_original(self, G: List[int], stage: int, layers: int, max_diff: float, prev: int) -> None:
         """Original branch-and-bound for layer partitioning
 
         Args:
             G (list): Partition result
-            stage (_type_): Current stage
-            layers (_type_): Number of layers already allocated
-            max_diff (_type_): Maximum prefill and decode latency difference from previous stages
+            stage (int): Current stage
+            layers (int): Number of layers already allocated
+            max_diff (float): Maximum prefill and decode latency difference from previous stages
         return:
             None
         """
@@ -104,7 +105,7 @@ class ModelPartitioner:
                 new_diff = max_diff
             self.BBS_original(G_, stage + 1, layers + layer_now, new_diff, layer_now)
 
-    def find_partition(self):
+    def find_partition(self) -> Tuple[List[int], float]:
         """Find the optimal partition for the model layers
         
         Returns:

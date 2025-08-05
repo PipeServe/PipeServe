@@ -1,29 +1,26 @@
 
-from llm_analysis.analysis import infer, LLMAnalysis
-import os
+from llm_analysis.analysis import LLMAnalysis
 import math
 import time
-import json
 from pathlib import Path
-from transformers import AutoConfig
-from llm_analysis.config import (DtypeConfig, GPUConfig, ModelConfig,
-                                 ParallelismConfig, get_dtype_config_by_name,
+from llm_analysis.config import (ParallelismConfig, get_dtype_config_by_name,
                                  get_gpu_config_by_name,
                                  get_model_config_by_name)
 from copy import deepcopy
 import logging
 from llm_analysis.logger import logger
+from typing import List, Tuple, Optional
 try:
-    from .gpu_config import load_gpus_from_config
+    from .gpu_config import load_gpus_from_config, GPU
     from .ModelPartitioner import ModelPartitioner
 except ImportError:
-    from gpu_config import load_gpus_from_config
+    from gpu_config import load_gpus_from_config, GPU
     from ModelPartitioner import ModelPartitioner
 
 
 logger.setLevel(logging.ERROR)
 
-MODEL_CONFIG_FILE = str(Path(__file__).parent / "model_configs")
+MODEL_CONFIG_FILE: str = str(Path(__file__).parent / "model_configs")
 
 
 class BatchConfigurator():
@@ -33,7 +30,7 @@ class BatchConfigurator():
     Service Level Objectives (SLO) for prefill and decode latencies.
     """
 
-    def __init__(self, analysis, slo_p=2, slo_d=0.5, max_chunk_size=256):
+    def __init__(self, analysis: LLMAnalysis, slo_p: float = 2, slo_d: float = 0.5, max_chunk_size: int = 256) -> None:
         """Initialize the batch configurator
         
         Args:
@@ -42,26 +39,26 @@ class BatchConfigurator():
             slo_d (float, optional): Decode latency SLO in seconds. Defaults to 0.5.
             max_chunk_size (int, optional): Maximum sequence chunk size. Defaults to 256.
         """
-        self.analysis = analysis
-        self.slo_p = slo_p
-        self.slo_d = slo_d
-        self.max_chunk_size = max_chunk_size
-        self.layers = analysis.model_config.num_layers
-        self.gpu = load_gpus_from_config(analysis.gpu_config.name)
+        self.analysis: LLMAnalysis = analysis
+        self.slo_p: float = slo_p
+        self.slo_d: float = slo_d
+        self.max_chunk_size: int = max_chunk_size
+        self.layers: int = analysis.model_config.num_layers
+        self.gpu: GPU = load_gpus_from_config(analysis.gpu_config.name)
         
-        self.delta = 100000
-        self.G = []
+        self.delta: float = 100000
+        self.G: List[int] = []
         
-        self.max_stage = 0
-        self.max_layer_per_gpu = 0
+        self.max_stage: int = 0
+        self.max_layer_per_gpu: int = 0
         
-        self.dfs_count = 0
-        self.dfs_original_count = 0
+        self.dfs_count: int = 0
+        self.dfs_original_count: int = 0
         
         # Initialize model partitioner
-        self.partitioner = None
+        self.partitioner: Optional[ModelPartitioner] = None
 
-    def find_partition(self):
+    def find_partition(self) -> Tuple[List[int], float]:
         """Find optimal model layer partitioning across pipeline stages
         
         Creates a ModelPartitioner instance with current parameters and finds
@@ -87,7 +84,7 @@ class BatchConfigurator():
         
         return self.G, self.delta
 
-    def solve_brute_force(self):
+    def solve_brute_force(self) -> Optional[List[int]]:
         """Solve batch configuration using brute force search approach
         
         Iterates through all combinations of batch_p (prefill batch size) and 
@@ -101,11 +98,11 @@ class BatchConfigurator():
             list: Optimal partition configuration if found for single stage, None otherwise
         """
         # Initialize best configuration tracking
-        best_G = []
-        best_delta = 100000
-        best_batch_d = 1
-        best_batch_p = 1
-        best_cost = 1000000
+        best_G: List[int] = []
+        best_delta: float = 100000
+        best_batch_d: int = 1
+        best_batch_p: int = 1
+        best_cost: float = 1000000
         
         # Iterate through prefill batch sizes
         for batch_p in range(1, 100):
@@ -159,7 +156,7 @@ class BatchConfigurator():
         decode_latency = self.analysis.inference(best_batch_d, 1)['decode_latency']
         print(f"prefill latency: {prefill_latency + (self.max_stage - 1) * (self.transfer_p + best_delta)}, decode latency: {decode_latency + (self.max_stage - 1) * (self.transfer_d + best_delta)}")
         
-    def solve_bucket(self):
+    def solve_bucket(self) -> Optional[List[int]]:
         """Solve batch configuration using optimized bucket search approach
         
         Uses binary search to find maximum feasible batch sizes, then employs
@@ -174,11 +171,11 @@ class BatchConfigurator():
             list: Optimal partition configuration if found for single stage, None otherwise
         """
         # Initialize best configuration tracking
-        best_G = []
-        best_delta = 100000
-        best_batch_d = 1
-        best_batch_p = 1
-        best_cost = 1000000
+        best_G: List[int] = []
+        best_delta: float = 100000
+        best_batch_d: int = 1
+        best_batch_p: int = 1
+        best_cost: float = 1000000
         
         # Get maximum feasible batch sizes using binary search
         max_batch_p, max_batch_d = self.max_batch()
@@ -244,7 +241,7 @@ class BatchConfigurator():
         for i, layer in enumerate(best_G):
             print(f"Stage {i}: {layer} layers, prefill latency: {prefill_latency * best_G[i] / self.layers:.3f}, decode latency: {decode_latency * best_G[i] / self.layers:.3f}")
 
-    def max_batch(self):
+    def max_batch(self) -> Tuple[int, int]:
         """Find maximum feasible batch sizes using binary search
         
         Uses binary search to efficiently find the maximum batch sizes for both
@@ -255,8 +252,9 @@ class BatchConfigurator():
             tuple: (max_batch_p, max_batch_d) - maximum feasible batch sizes
         """
         # Binary search for maximum prefill batch size
-        left_p, right_p = 1, 99
-        best_batch_p = 1
+        left_p: int = 1
+        right_p: int = 99
+        best_batch_p: int = 1
         
         while left_p <= right_p:
             mid_p = (left_p + right_p) // 2
@@ -277,8 +275,9 @@ class BatchConfigurator():
         max_batch_p = best_batch_p
 
         # Binary search for maximum decode batch size
-        left_d, right_d = 1, 999
-        best_batch_d = 1
+        left_d: int = 1
+        right_d: int = 999
+        best_batch_d: int = 1
         
         while left_d <= right_d:
             mid_d = (left_d + right_d) // 2
@@ -299,7 +298,7 @@ class BatchConfigurator():
         print(f"Binary search found maximum batch sizes - Prefill: {max_batch_p}, Decode: {max_batch_d}")
         return max_batch_p, max_batch_d
 
-    def check_slo(self, batch_p, batch_d, delta):
+    def check_slo(self, batch_p: int, batch_d: int, delta: float) -> bool:
         """Check if given batch configuration meets SLO constraints
         
         Validates whether the specified batch sizes and partition delta
@@ -319,7 +318,7 @@ class BatchConfigurator():
             return False
         return True
     
-    def cost(self, batch_p, batch_d, outnum=129):
+    def cost(self, batch_p: int, batch_d: int, outnum: int = 129) -> float:
         """Calculate the total cost for given batch configuration
         
         Computes the cost based on prefill and decode latencies normalized
@@ -336,9 +335,9 @@ class BatchConfigurator():
         return (self.single_layer_prefill_latency / batch_p + outnum * self.single_layer_decode_latency / batch_d) * self.layers
 
     def max_layer_per_GPU(self,
-                          batch_size,
-                          seq_len,
-                          memory_buffer_gb: float = 5.0):
+                          batch_size: int,
+                          seq_len: int,
+                          memory_buffer_gb: float = 5.0) -> int:
         """Calculate maximum number of model layers that can fit on a single GPU
         
         Determines the maximum number of transformer layers that can be allocated
@@ -353,8 +352,6 @@ class BatchConfigurator():
         Returns:
             int: Maximum number of layers that can fit on one GPU
         """
-        import math
-        
         # Calculate memory requirements per layer
         weight_memory_per_layer = self.analysis.get_weight_memory_per_layer()
         memory_kv_cache_per_layer = self.analysis.get_memory_kv_cache_per_layer(
@@ -374,7 +371,7 @@ class BatchConfigurator():
             (weight_per_layer / 1024 / 1024 / 1024))
         return max_layer
 
-    def transfer_time(self, batch_size, seq_len=1):
+    def transfer_time(self, batch_size: int, seq_len: int = 1) -> float:
         """Calculate data transfer time between pipeline stages
         
         Estimates the time required to transfer intermediate activations
@@ -401,7 +398,7 @@ class BatchConfigurator():
         #                     batch_size * seq_len * 2 / 1024 / 1024) + INTERCEPT
         return 0.05
 
-    def test(self, batch_p=1, batch_d=1):
+    def test(self, batch_p: int = 1, batch_d: int = 1) -> None:
         """Test method to analyze latency patterns across different batch sizes
         
         Generates latency measurements for various prefill and decode batch sizes
