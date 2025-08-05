@@ -1,0 +1,9 @@
+{
+    "name": "rtx6000-48gb",
+    "mem_per_GPU_in_GB": 480,
+    "hbm_bandwidth_in_GB_per_sec": 600,
+    "peak_fp16_TFLOPS": 119,
+    "intra_node_bandwidth_in_GB_per_sec": 32,
+    "intra_node_min_message_latency": 8e-06,
+    "inter_node_bandwidth_in_GB_per_sec": 200
+}
