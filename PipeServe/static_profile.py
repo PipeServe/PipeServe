@@ -1,4 +1,3 @@
-
 from llm_analysis.analysis import infer, LLMAnalysis
 import os
 import math
@@ -6,6 +5,7 @@ import time
 import json
 from pathlib import Path
 from transformers import AutoConfig
+# from llm_analysis.analysis import LLMAnalysis
 from llm_analysis.config import (DtypeConfig, GPUConfig, ModelConfig,
                                  ParallelismConfig, get_dtype_config_by_name,
                                  get_gpu_config_by_name,
@@ -13,35 +13,40 @@ from llm_analysis.config import (DtypeConfig, GPUConfig, ModelConfig,
 from copy import deepcopy
 import logging
 from llm_analysis.logger import logger
-try:
-    from .gpu_config import load_gpus_from_config
-    from .ModelPartitioner import ModelPartitioner
-except ImportError:
-    from gpu_config import load_gpus_from_config
-    from ModelPartitioner import ModelPartitioner
-
 
 logger.setLevel(logging.ERROR)
 
-MODEL_CONFIG_FILE = str(Path(__file__).parent / "model_configs")
+GPU_CONFIG_FILE = "gpu_config.json"
+MODEL_CONFIG_FILE = f"{Path(__file__).parent}\\model_config\\"
 
 
-class BatchConfigurator():
-    """Batch configurator for optimizing LLM inference pipeline with SLO constraints
-    
-    This class handles batch size optimization and model partitioning to meet
-    Service Level Objectives (SLO) for prefill and decode latencies.
-    """
+class GPU:
+
+    def __init__(self, name, flops_efficiency, hbm_memory_efficiency,
+                 mem_per_GPU_in_GB):
+        self.name = name
+        self.flops_efficiency = flops_efficiency
+        self.hbm_memory_efficiency = hbm_memory_efficiency
+        self.mem_per_GPU_in_GB = mem_per_GPU_in_GB
+
+
+def load_gpus_from_config(gpu_name):
+    with open(f"{Path(__file__).parent}/{GPU_CONFIG_FILE}", 'r') as file:
+        data = json.load(file)
+        # gpus = []
+        for name, attributes in data.items():
+            if name == gpu_name:
+                gpu = GPU(
+                    name,
+                    flops_efficiency=attributes['flops_efficiency'],
+                    hbm_memory_efficiency=attributes['hbm_memory_efficiency'],
+                    mem_per_GPU_in_GB=attributes['mem_per_GPU_in_GB'])
+        return gpu
+
+
+class solver():
 
     def __init__(self, analysis, slo_p=2, slo_d=0.5, max_chunk_size=256):
-        """Initialize the batch configurator
-        
-        Args:
-            analysis (LLMAnalysis): LLM analysis object containing model and GPU configurations
-            slo_p (float, optional): Prefill latency SLO in seconds. Defaults to 2.
-            slo_d (float, optional): Decode latency SLO in seconds. Defaults to 0.5.
-            max_chunk_size (int, optional): Maximum sequence chunk size. Defaults to 256.
-        """
         self.analysis = analysis
         self.slo_p = slo_p
         self.slo_d = slo_d
@@ -57,49 +62,100 @@ class BatchConfigurator():
         
         self.dfs_count = 0
         self.dfs_original_count = 0
-        
-        # Initialize model partitioner
-        self.partitioner = None
+
+    def dfs(self, G, stage, layers, max_diff, prev):
+        """_summary_
+
+        Args:
+            G (list): 切分结果
+            stage (_type_): 当前stage
+            layers (_type_): 已经分配的layer数量
+            max_diff (_type_): 之前累计stage的prefill和decode延迟差值最大值
+            prev (_type_): 上一个stage的layer数量
+        return:
+            None
+        """
+        self.dfs_count += 1
+        if stage == self.max_stage - 1:
+            layer_now = self.layers - layers
+            if layer_now > 0 and self.max_layer_per_gpu >= layer_now and layer_now <= prev:
+                # update temp G and delta
+                G_ = deepcopy(G)
+                G_.append(layer_now)
+                new_diff = max(
+                    max_diff,
+                    abs(layer_now * self.single_layer_prefill_latency + self.transfer_p - (self.single_layer_decode_latency * G[-1] + self.transfer_d)))
+                # update global delta and G
+                if new_diff < self.delta:
+                    self.delta = new_diff
+                    self.G = G_
+            return
+
+        upper = min(self.layers - layers, self.max_layer_per_gpu, prev)
+        for layer_now in range(1, upper + 1):
+            # update temp G and delta
+            G_ = deepcopy(G)
+            G_.append(layer_now)
+            if stage > 0:
+                new_diff = max(
+                    max_diff,
+                    abs(layer_now * self.single_layer_prefill_latency + self.transfer_p - (self.single_layer_decode_latency * G[-1] + self.transfer_d)))
+            else:
+                new_diff = max_diff
+            self.dfs(G_, stage + 1, layers + layer_now, new_diff, layer_now)
+
+
+    def dfs_original(self, G, stage, layers, max_diff, prev):
+        """_summary_
+
+        Args:
+            G (list): 切分结果
+            stage (_type_): 当前stage
+            layers (_type_): 已经分配的layer数量
+            max_diff (_type_): 之前累计stage的prefill和decode延迟差值最大值
+        return:
+            None
+        """
+        self.dfs_original_count += 1
+        if stage == self.max_stage - 1:
+            layer_now = self.layers - layers
+            if layer_now > 0 and self.max_layer_per_gpu >= layer_now:
+                # update temp G and delta
+                G_ = deepcopy(G)
+                G_.append(layer_now)
+                new_diff = max(
+                    max_diff,
+                    abs(layer_now * self.single_layer_prefill_latency + self.transfer_p - (self.single_layer_decode_latency * G[-1] + self.transfer_d)))
+                # update global delta and G
+                if new_diff < self.delta:
+                    self.delta = new_diff
+                    self.G = G_
+            return
+
+        upper = min(self.layers - layers, self.max_layer_per_gpu)
+        for layer_now in range(1, upper + 1):
+            # update temp G and delta
+            G_ = deepcopy(G)
+            G_.append(layer_now)
+            if stage > 0:
+                new_diff = max(
+                    max_diff,
+                    abs(layer_now * self.single_layer_prefill_latency + self.transfer_p - (self.single_layer_decode_latency * G[-1] + self.transfer_d)))
+            else:
+                new_diff = max_diff
+            self.dfs_original(G_, stage + 1, layers + layer_now, new_diff, layer_now)
 
     def find_partition(self):
-        """Find optimal model layer partitioning across pipeline stages
+        self.G = []
+        self.delta = 100000
         
-        Creates a ModelPartitioner instance with current parameters and finds
-        the best way to distribute model layers across pipeline stages to
-        minimize latency differences between prefill and decode operations.
-        
-        Returns:
-            tuple: (G, delta) where G is the partition result list and delta is the minimum difference
-        """
-        # Create model partitioner with current parameters
-        self.partitioner = ModelPartitioner(self.analysis, self.max_stage, self.max_layer_per_gpu)
-        self.partitioner.single_layer_prefill_latency = self.single_layer_prefill_latency
-        self.partitioner.single_layer_decode_latency = self.single_layer_decode_latency
-        self.partitioner.transfer_p = self.transfer_p
-        self.partitioner.transfer_d = self.transfer_d
-        
-        # Use the find_partition method from ModelPartitioner
-        G, delta = self.partitioner.find_partition()
-        
-        # Update local state
-        self.G = G
-        self.delta = delta
+        upper = self.layers - (self.max_stage - 1)
+        self.dfs_original(self.G, 0, 0, 0, upper)
+        # self.dfs(self.G, 0, 0, 0, upper)
         
         return self.G, self.delta
 
     def solve_brute_force(self):
-        """Solve batch configuration using brute force search approach
-        
-        Iterates through all combinations of batch_p (prefill batch size) and 
-        batch_d (decode batch size) to find the optimal configuration that
-        meets SLO constraints while minimizing cost.
-        
-        The method explores batch sizes from 1 to 100 for prefill and 1 to 1000
-        for decode, breaking early when SLO constraints are exceeded.
-        
-        Returns:
-            list: Optimal partition configuration if found for single stage, None otherwise
-        """
         """
         遍历batch_p和batch_d的组合，找到满足SLO的切分方案
         """
@@ -147,26 +203,12 @@ class BatchConfigurator():
                     best_cost = cost
 
         print(f"best batch_p: {best_batch_p}, best batch_d: {best_batch_d}, partition: {best_G}, with delta: {best_delta}")
-        if self.partitioner:
-            print(f"dfs count: {self.partitioner.dfs_count}, original dfs count: {self.partitioner.dfs_original_count}")
+        print(f"dfs count: {self.dfs_count}, original dfs count: {self.dfs_original_count}")
         prefill_latency = self.analysis.inference(best_batch_p, self.max_chunk_size)['prefill_latency']
         decode_latency = self.analysis.inference(best_batch_d, 1)['decode_latency']
         print(f"prefill latency: {prefill_latency + (self.max_stage - 1) * (self.transfer_p + best_delta)}, decode latency: {decode_latency + (self.max_stage - 1) * (self.transfer_d + best_delta)}")
         
     def solve_bucket(self):
-        """Solve batch configuration using optimized bucket search approach
-        
-        Uses binary search to find maximum feasible batch sizes, then employs
-        a bucketing strategy to reduce search space. Batch_d values are grouped
-        into buckets of size 10, and the search is performed in reverse order
-        to prioritize higher batch sizes.
-        
-        This method is more efficient than brute force as it reduces the number
-        of configurations that need to be evaluated while still finding optimal solutions.
-        
-        Returns:
-            list: Optimal partition configuration if found for single stage, None otherwise
-        """
         
         best_G = []
         best_delta = 100000
@@ -224,8 +266,7 @@ class BatchConfigurator():
                         best_cost = cost
                 break
         print(f"best batch_p: {best_batch_p}, best batch_d: {best_batch_d}, partition: {best_G}, with delta: {best_delta}")
-        if self.partitioner:
-            print(f"dfs count: {self.partitioner.dfs_count}, original dfs count: {self.partitioner.dfs_original_count}")
+        print(f"dfs count: {self.dfs_count}, original dfs count: {self.dfs_original_count}")
         prefill_latency = self.analysis.inference(best_batch_p, self.max_chunk_size)['prefill_latency']
         decode_latency = self.analysis.inference(best_batch_d, 1)['decode_latency']
         print(f"prefill latency: {prefill_latency}, decode latency: {decode_latency}")
@@ -233,15 +274,6 @@ class BatchConfigurator():
             print(f"Stage {i}: {layer} layers, prefill latency: {prefill_latency * best_G[i] / self.layers:.3f}, decode latency: {decode_latency * best_G[i] / self.layers:.3f}")
 
     def max_batch(self):
-        """Find maximum feasible batch sizes using binary search
-        
-        Uses binary search to efficiently find the maximum batch sizes for both
-        prefill (batch_p) and decode (batch_d) operations that still meet the
-        SLO constraints. This helps reduce the search space for optimization.
-        
-        Returns:
-            tuple: (max_batch_p, max_batch_d) - maximum feasible batch sizes
-        """
         # 二分查找 batch_p 的最大可行值
         left_p, right_p = 1, 99
         best_batch_p = 1
@@ -275,19 +307,6 @@ class BatchConfigurator():
         return max_batch_p, max_batch_d
 
     def check_slo(self, batch_p, batch_d, delta):
-        """Check if given batch configuration meets SLO constraints
-        
-        Validates whether the specified batch sizes and partition delta
-        satisfy both prefill and decode latency SLO requirements.
-        
-        Args:
-            batch_p (int): Prefill batch size
-            batch_d (int): Decode batch size  
-            delta (float): Latency difference from partitioning
-            
-        Returns:
-            bool: True if SLO constraints are met, False otherwise
-        """
         if self.analysis.inference(batch_p, self.max_chunk_size)['prefill_latency'] + (self.max_stage - 1) * (self.transfer_p + delta) > self.slo_p:
             return False
         if self.analysis.inference(batch_d, 1)['decode_latency'] + (self.max_stage - 1) * (self.transfer_d + delta) > self.slo_d:
@@ -295,38 +314,21 @@ class BatchConfigurator():
         return True
     
     def cost(self, batch_p, batch_d, outnum=129):
-        """Calculate the total cost for given batch configuration
-        
-        Computes the cost based on prefill and decode latencies normalized
-        by their respective batch sizes, considering the number of output tokens.
-        
-        Args:
-            batch_p (int): Prefill batch size
-            batch_d (int): Decode batch size
-            outnum (int, optional): Number of output tokens. Defaults to 129.
-            
-        Returns:
-            float: Total cost for the configuration
-        """
         return (self.single_layer_prefill_latency / batch_p + outnum * self.single_layer_decode_latency / batch_d) * self.layers
 
     def max_layer_per_GPU(self,
                           batch_size,
                           seq_len,
                           memory_buffer_gb: float = 5.0):
-        """Calculate maximum number of model layers that can fit on a single GPU
-        
-        Determines the maximum number of transformer layers that can be allocated
-        to a single GPU based on memory constraints including model weights,
-        KV cache, and activation memory requirements.
-        
+        """_summary_
+
         Args:
-            batch_size (int): Batch size for inference
-            seq_len (int): Sequence length
-            memory_buffer_gb (float, optional): Memory buffer in GB to reserve. Defaults to 5.0.
-            
+            batch_size (_type_): _description_
+            seq_len (_type_): _description_
+            memory_buffer_gb (float, optional): _description_. Defaults to 2.0.
+
         Returns:
-            int: Maximum number of layers that can fit on one GPU
+            _type_: 返回每个GPU上可以分配的最大层数
         """
         import math
         # print(model_config)
@@ -348,20 +350,6 @@ class BatchConfigurator():
         return max_layer
 
     def transfer_time(self, batch_size, seq_len=1):
-        """Calculate data transfer time between pipeline stages
-        
-        Estimates the time required to transfer intermediate activations
-        between different pipeline stages based on batch size and sequence length.
-        Currently returns a fixed value but includes commented logic for
-        more sophisticated calculations based on data size.
-        
-        Args:
-            batch_size (int): Batch size for the operation
-            seq_len (int, optional): Sequence length. Defaults to 1.
-            
-        Returns:
-            float: Transfer time in seconds
-        """
         # DECODE_LATENCY = 0.015
         # # DECODE_LATENCY = 0.005
         # SLOPE = 0.0274
@@ -375,18 +363,9 @@ class BatchConfigurator():
         return 0.05
 
     def test(self, batch_p=1, batch_d=1):
-        """Test method to analyze latency patterns across different batch sizes
-        
-        Generates latency measurements for various prefill and decode batch sizes
-        to help understand performance characteristics and validate configurations.
-        
-        Args:
-            batch_p (int, optional): Maximum prefill batch size to test. Defaults to 1.
-            batch_d (int, optional): Maximum decode batch size to test. Defaults to 1.
-            
-        Prints:
-            Prefill and decode latency arrays for the tested batch size ranges
-        """
+        # prefill = self.single_layer_prefill_latency = self.analysis.inference(batch_p, self.max_chunk_size)['prefill_latency']
+        # decode = self.single_layer_decode_latency = self.analysis.inference(batch_d, 1)['decode_latency']
+        # print(f"prefill latency: {prefill}, decode latency: {decode}")
         prefill_latencys = []
         decode_latencys = []
         for i in range(1, batch_p + 1):
@@ -402,8 +381,9 @@ class BatchConfigurator():
 
 if __name__ == "__main__":
     model = "Llama-2-7b"
+    # model = "LLaMA-MoE-v1-3_0B-2_16"
     print(f"model: {model}")
-    model_name = str(Path(MODEL_CONFIG_FILE) / model)
+    model_name = MODEL_CONFIG_FILE + model
     gpu_name = "t4-pcie-16gb"
     # gpu_name = "rtx6000-48gb"
     dtype_name = "w16a16e16"
@@ -413,7 +393,8 @@ if __name__ == "__main__":
     gpu = load_gpus_from_config(gpu_name)
 
     model_config = get_model_config_by_name(model_name)
-    # {'name': 'model_config_Llama-2-7b', 'num_layers': 32, 'n_head': 32, 'hidden_dim': 4096, 'vocab_size': 32000, 'max_seq_len': 4096, 'num_key_value_heads': 32, 'num_key_value_groups': 1.0, 'ffn_embed_dim': 16384, 'expansion_ratio': 4, 'model_type': 'llama', 'moe_num_experts': 1, 'moe_top_k': 1}
+    # print(model_config)
+    # {'name': '_workspace_gyk_model_config_Llama-2-7b', 'num_layers': 32, 'n_head': 32, 'hidden_dim': 4096, 'vocab_size': 32000, 'max_seq_len': 4096, 'num_key_value_heads': 32, 'num_key_value_groups': 1.0, 'ffn_embed_dim': 16384, 'expansion_ratio': 4, 'model_type': 'llama', 'moe_num_experts': 1, 'moe_top_k': 1}
     gpu_config = get_gpu_config_by_name(gpu_name)
     # GPUConfig(name='t4-pcie-16gb', mem_per_GPU_in_GB=160, hbm_bandwidth_in_GB_per_sec=300, intra_node_bandwidth_in_GB_per_sec=32, intra_node_min_message_latency=8e-06, peak_fp16_TFLOPS=65, peak_i8_TFLOPS=130, peak_i4_TFLOPS=260, inter_node_bandwidth_in_GB_per_sec=200)
     dtype_config = get_dtype_config_by_name(dtype_name)
@@ -431,16 +412,28 @@ if __name__ == "__main__":
         flops_efficiency=gpu.flops_efficiency,
         hbm_memory_efficiency=gpu.hbm_memory_efficiency,
     )
+    # print(analysis.model_config)
+    # print(analysis.gpu_config)
+    # print(analysis.dtype_config)
+
+    # max_layer_per_GPU(model_config, gpu, dtype_name, seq_len, batch_size)
+    # print(analysis.get_weight_memory_per_layer())
+    # infer_data = analysis.inference(batch_size_per_gpu=2, seq_len=256)
+    # print(f"prefill_latency: {infer_data['prefill_latency']}, decode_latency: {infer_data['decode_latency']}")
+    # print(analysis.get_latency_fwd_per_layer(batch_size=50, seq_len=1, layernorm_dtype_bytes=2))
+    # print(transfer_time(analysis, batch_size=2, seq_len=256))
     
-    BatchConfigurator = BatchConfigurator(analysis, slo_p=1.5, slo_d=0.5, max_chunk_size=256)
+    solver = solver(analysis, slo_p=1.5, slo_d=0.5, max_chunk_size=256)
     
-    # BatchConfigurator.test(batch_p=8, batch_d=500)
+    # solver.test(batch_p=8, batch_d=500)
     
     start_time = time.time()
-    BatchConfigurator.solve_brute_force()
+    solver.solve_brute_force()
     print(f"brute force solve time: {time.time() - start_time:.2f} s")
     
-    # BatchConfigurator.test()
+    # solver.test()
     start_time = time.time()
-    BatchConfigurator.solve_bucket()
+    solver.solve_bucket()
     print(f"bucket solve time: {time.time() - start_time:.2f} s")
+    
+    
