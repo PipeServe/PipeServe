@@ -1,0 +1,16 @@
+{
+    "t4-pcie-16gb": {
+        "name": "t4-pcie-16gb",
+        "mem_per_GPU_in_GB": 16,
+        "peak_fp16_TFLOPS": 65,
+        "flops_efficiency": 0.26,
+        "hbm_memory_efficiency": 0.5
+    },
+    "rtx6000-48gb": {
+        "name": "rtx6000-48gb",
+        "mem_per_GPU_in_GB": 48,
+        "peak_fp16_TFLOPS": 119,
+        "flops_efficiency": 0.30,
+        "hbm_memory_efficiency": 0.35
+    }
+}
