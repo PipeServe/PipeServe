@@ -1,5 +1,7 @@
+import json
+from pathlib import Path
 
-
+GPU_CONFIG_FILE = "gpu_config.json"
 
 
 class GPU:

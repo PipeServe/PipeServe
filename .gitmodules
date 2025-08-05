@@ -1,0 +1,3 @@
+[submodule "PipeServe/llm-analysis"]
+	path = PipeServe/llm-analysis
+	url = https://github.com/cli99/llm-analysis
