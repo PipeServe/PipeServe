@@ -2,6 +2,7 @@
 from llm_analysis.analysis import LLMAnalysis
 import math
 import time
+import argparse
 from pathlib import Path
 from llm_analysis.config import (ParallelismConfig, get_dtype_config_by_name,
                                  get_gpu_config_by_name,
@@ -427,15 +428,184 @@ class BatchConfigurator():
         print(f"prefill latency: {prefill_latencys},\n decode latency: {decode_latencys}")
 
 
+def parse_arguments() -> argparse.Namespace:
+    """Parse command line arguments for batch configuration
+    
+    Returns:
+        argparse.Namespace: Parsed command line arguments
+    """
+    parser = argparse.ArgumentParser(
+        description="Batch Configurator for LLM Inference Pipeline Optimization",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+    
+    # Model configuration arguments
+    parser.add_argument(
+        "--model", 
+        type=str, 
+        default="Llama-2-7b",
+        help="Model name to use for analysis"
+    )
+    
+    # Hardware configuration arguments
+    parser.add_argument(
+        "--gpu-name", 
+        type=str, 
+        default="t4-pcie-16gb",
+        choices=["t4-pcie-16gb", "rtx6000-48gb", "a100-40gb", "a100-80gb"],
+        help="GPU model name"
+    )
+    
+    # Data type configuration arguments
+    parser.add_argument(
+        "--dtype", 
+        type=str, 
+        default="w16a16e16",
+        choices=["w16a16e16", "w16a16e32", "w4a16e16", "w4a16e32", "w4a4e16", "w4a4e32", "w4a8e16", "w8a8e16"],
+        help="Data type configuration (weight-activation-embedding bits)"
+    )
+    
+    # Sequence and batch configuration arguments
+    parser.add_argument(
+        "--seq-len", 
+        type=int, 
+        default=1024,
+        help="Sequence length for analysis"
+    )
+    
+    parser.add_argument(
+        "--batch-size", 
+        type=int, 
+        default=2,
+        help="Base batch size for analysis"
+    )
+    
+    parser.add_argument(
+        "--max-chunk-size", 
+        type=int, 
+        default=256,
+        help="Maximum sequence chunk size"
+    )
+    
+    # SLO constraint arguments
+    parser.add_argument(
+        "--slo-prefill", 
+        type=float, 
+        default=1.5,
+        help="Prefill latency SLO constraint in seconds"
+    )
+    
+    parser.add_argument(
+        "--slo-decode", 
+        type=float, 
+        default=0.5,
+        help="Decode latency SLO constraint in seconds"
+    )
+    
+    # Parallelism configuration arguments
+    parser.add_argument(
+        "--tp-size", 
+        type=int, 
+        default=1,
+        help="Tensor parallelism size"
+    )
+    
+    parser.add_argument(
+        "--pp-size", 
+        type=int, 
+        default=1,
+        help="Pipeline parallelism size"
+    )
+    
+    parser.add_argument(
+        "--sp-size", 
+        type=int, 
+        default=1,
+        help="Sequence parallelism size"
+    )
+    
+    parser.add_argument(
+        "--dp-size", 
+        type=int, 
+        default=1,
+        help="Data parallelism size"
+    )
+    
+    # Algorithm selection arguments
+    parser.add_argument(
+        "--algorithm", 
+        type=str, 
+        default="both",
+        choices=["brute-force", "bucket", "both"],
+        help="Algorithm to use for batch configuration optimization"
+    )
+    
+    # Test mode arguments
+    parser.add_argument(
+        "--test-mode", 
+        action="store_true",
+        help="Run in test mode to analyze latency patterns"
+    )
+    
+    parser.add_argument(
+        "--test-batch-p", 
+        type=int, 
+        default=8,
+        help="Maximum prefill batch size for testing"
+    )
+    
+    parser.add_argument(
+        "--test-batch-d", 
+        type=int, 
+        default=500,
+        help="Maximum decode batch size for testing"
+    )
+    
+    # Output control arguments
+    parser.add_argument(
+        "--verbose", 
+        action="store_true",
+        help="Enable verbose output"
+    )
+    
+    parser.add_argument(
+        "--quiet", 
+        action="store_true",
+        help="Suppress non-essential output"
+    )
+    
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    # Configuration parameters for LLM analysis
-    model = "Llama-2-7b"
-    print(f"model: {model}")
+    # Parse command line arguments
+    args = parse_arguments()
+    
+    # Configure logging based on verbosity
+    if args.quiet:
+        logger.setLevel(logging.CRITICAL)
+    elif args.verbose:
+        logger.setLevel(logging.INFO)
+    else:
+        logger.setLevel(logging.ERROR)
+    
+    # Configuration parameters for LLM analysis from command line
+    model = args.model
+    print(f"Model: {model}")
     model_name = str(Path(MODEL_CONFIG_FILE) / model)
-    gpu_name = "t4-pcie-16gb"
-    dtype_name = "w16a16e16"
-    seq_len = 1024
-    batch_size = 2
+    gpu_name = args.gpu_name
+    dtype_name = args.dtype
+    seq_len = args.seq_len
+    batch_size = args.batch_size
+    
+    print("Configuration:")
+    print(f"  GPU: {gpu_name}")
+    print(f"  Data type: {dtype_name}")
+    print(f"  Sequence length: {seq_len}")
+    print(f"  Base batch size: {batch_size}")
+    print(f"  Max chunk size: {args.max_chunk_size}")
+    print(f"  SLO - Prefill: {args.slo_prefill}s, Decode: {args.slo_decode}s")
+    print(f"  Parallelism - TP: {args.tp_size}, PP: {args.pp_size}, SP: {args.sp_size}, DP: {args.dp_size}")
 
     # Load hardware configuration
     gpu = load_gpus_from_config(gpu_name)
@@ -444,10 +614,12 @@ if __name__ == "__main__":
     model_config = get_model_config_by_name(model_name)
     gpu_config = get_gpu_config_by_name(gpu_name)
     dtype_config = get_dtype_config_by_name(dtype_name)
-    parallel_config = ParallelismConfig(tp_size=1,
-                                        pp_size=1,
-                                        sp_size=1,
-                                        dp_size=1)
+    parallel_config = ParallelismConfig(
+        tp_size=args.tp_size,
+        pp_size=args.pp_size,
+        sp_size=args.sp_size,
+        dp_size=args.dp_size
+    )
 
     # Create LLM analysis instance with all configurations
     analysis = LLMAnalysis(
@@ -460,14 +632,37 @@ if __name__ == "__main__":
     )
     
     # Initialize batch configurator with SLO constraints
-    BatchConfigurator = BatchConfigurator(analysis, slo_p=1.5, slo_d=0.5, max_chunk_size=256)
+    batch_configurator = BatchConfigurator(
+        analysis, 
+        slo_p=args.slo_prefill, 
+        slo_d=args.slo_decode, 
+        max_chunk_size=args.max_chunk_size
+    )
     
-    # Solve using brute force approach and measure execution time
-    start_time = time.time()
-    BatchConfigurator.solve_brute_force()
-    print(f"brute force solve time: {time.time() - start_time:.2f} s")
+    # Run in test mode if specified
+    if args.test_mode:
+        print("\n=== Running Test Mode ===")
+        print(f"Testing batch sizes - Prefill: 1-{args.test_batch_p}, Decode: 1-{args.test_batch_d} (step 20)")
+        batch_configurator.test(batch_p=args.test_batch_p, batch_d=args.test_batch_d)
+        exit(0)
     
-    # Solve using bucket optimization approach
-    start_time = time.time()
-    BatchConfigurator.solve_bucket()
-    print(f"bucket solve time: {time.time() - start_time:.2f} s")
+    # Run optimization algorithms based on selection
+    if args.algorithm in ["brute-force", "both"]:
+        print("\n=== Running Brute Force Algorithm ===")
+        start_time = time.time()
+        batch_configurator.solve_brute_force()
+        brute_force_time = time.time() - start_time
+        print(f"Brute force solve time: {brute_force_time:.2f} s")
+    
+    if args.algorithm in ["bucket", "both"]:
+        print("\n=== Running Bucket Optimization Algorithm ===")
+        start_time = time.time()
+        batch_configurator.solve_bucket()
+        bucket_time = time.time() - start_time
+        print(f"Bucket solve time: {bucket_time:.2f} s")
+    
+    # Performance comparison if both algorithms were run
+    if args.algorithm == "both":
+        print("\n=== Performance Comparison ===")
+        speedup = brute_force_time / bucket_time if bucket_time > 0 else float('inf')
+        print(f"Bucket optimization speedup: {speedup:.2f}x")
