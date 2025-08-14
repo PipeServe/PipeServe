@@ -16,7 +16,7 @@
   "total_decode_latency": 0.7973680977293884,
   "dfs_count": 0,
   "dfs_original_count": 307,
-  "solve_time": 0.09913134574890137,
+  "solve_time": 0.10219287872314453,
   "meets_slo": true,
   "config_params": {
     "model": "Llama-2-13b",
