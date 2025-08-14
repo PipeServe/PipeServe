@@ -1,0 +1,15 @@
+{
+    "model": "Llama-2-7b",
+    "gpu_name": "t4-pcie-16gb",
+    "dtype": "w16a16e16",
+    "max_chunk_size": 256,
+    "slo_prefill": 1.5,
+    "slo_decode": 0.5,
+    "tp_size": 1,
+    "pp_size": 1,
+    "sp_size": 1,
+    "dp_size": 1,
+    "algorithm": "both",
+    "verbose": false,
+    "quiet": false
+}
