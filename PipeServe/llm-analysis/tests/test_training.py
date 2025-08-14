@@ -13,9 +13,12 @@
 # limitations under the License.
 
 from llm_analysis.analysis import ActivationRecomputation, DSZeRO, LLMAnalysis
-from llm_analysis.config import (ParallelismConfig, get_dtype_config_by_name,
-                                 get_gpu_config_by_name,
-                                 get_model_config_by_name)
+from llm_analysis.config import (
+    ParallelismConfig,
+    get_dtype_config_by_name,
+    get_gpu_config_by_name,
+    get_model_config_by_name,
+)
 from llm_analysis.utils import _latency_to_string, _num_to_string, within_range
 
 TOLERANCE = 0.05
@@ -40,9 +43,9 @@ def test_training_megatron_lm_1():
     model_config = get_model_config_by_name(model_name)
     gpu_config = get_gpu_config_by_name(gpu_name)
     dtype_config = get_dtype_config_by_name(dtype_name)
-    parallel_config = ParallelismConfig(tp_size=tp_size,
-                                        pp_size=pp_size,
-                                        dp_size=dp_size)
+    parallel_config = ParallelismConfig(
+        tp_size=tp_size, pp_size=pp_size, dp_size=dp_size
+    )
 
     analysis = LLMAnalysis(
         model_config,
@@ -59,11 +62,13 @@ def test_training_megatron_lm_1():
     )
 
     assert within_range(
-        summary_dict["total_training_latency_using_flops"] / 3600 / 24, 84,
-        TOLERANCE)
+        summary_dict["total_training_latency_using_flops"] / 3600 / 24, 84, TOLERANCE
+    )
 
-    assert (_latency_to_string(
-        summary_dict["total_training_latency_using_flops"]) == "84.82 days")
+    assert (
+        _latency_to_string(summary_dict["total_training_latency_using_flops"])
+        == "84.82 days"
+    )
 
     assert _num_to_string(summary_dict["num_params_total"]) == "162.58 G"
 
@@ -87,9 +92,9 @@ def test_training_megatron_lm_2():
     model_config = get_model_config_by_name(model_name)
     gpu_config = get_gpu_config_by_name(gpu_name)
     dtype_config = get_dtype_config_by_name(dtype_name)
-    parallel_config = ParallelismConfig(tp_size=tp_size,
-                                        pp_size=pp_size,
-                                        dp_size=dp_size)
+    parallel_config = ParallelismConfig(
+        tp_size=tp_size, pp_size=pp_size, dp_size=dp_size
+    )
 
     analysis = LLMAnalysis(
         model_config,
@@ -106,8 +111,8 @@ def test_training_megatron_lm_2():
     )
 
     assert within_range(
-        summary_dict["total_training_latency_using_flops"] / 3600 / 24, 23,
-        TOLERANCE)
+        summary_dict["total_training_latency_using_flops"] / 3600 / 24, 23, TOLERANCE
+    )
 
 
 # megatron-lm paper https://arxiv.org/abs/2104.04473 Table 2
@@ -129,9 +134,9 @@ def test_training_megatron_lm_3():
     model_config = get_model_config_by_name(model_name)
     gpu_config = get_gpu_config_by_name(gpu_name)
     dtype_config = get_dtype_config_by_name(dtype_name)
-    parallel_config = ParallelismConfig(tp_size=tp_size,
-                                        pp_size=pp_size,
-                                        dp_size=dp_size)
+    parallel_config = ParallelismConfig(
+        tp_size=tp_size, pp_size=pp_size, dp_size=dp_size
+    )
 
     analysis = LLMAnalysis(
         model_config,
@@ -144,13 +149,12 @@ def test_training_megatron_lm_3():
     summary_dict = analysis.training(
         batch_size_per_gpu=batch_size_per_gpu,
         total_num_tokens=total_num_tokens,
-        activation_recomputation=ActivationRecomputation(
-            activation_recomputation),
+        activation_recomputation=ActivationRecomputation(activation_recomputation),
     )
 
     assert within_range(
-        summary_dict["total_training_latency_using_flops"] / 3600 / 24, 156,
-        TOLERANCE)
+        summary_dict["total_training_latency_using_flops"] / 3600 / 24, 156, TOLERANCE
+    )
 
 
 # megatron-lm paper https://arxiv.org/abs/2104.04473 Table 2
@@ -173,9 +177,9 @@ def test_training_zero3_1():
     model_config = get_model_config_by_name(model_name)
     gpu_config = get_gpu_config_by_name(gpu_name)
     dtype_config = get_dtype_config_by_name(dtype_name)
-    parallel_config = ParallelismConfig(tp_size=tp_size,
-                                        pp_size=pp_size,
-                                        dp_size=dp_size)
+    parallel_config = ParallelismConfig(
+        tp_size=tp_size, pp_size=pp_size, dp_size=dp_size
+    )
 
     analysis = LLMAnalysis(
         model_config,
@@ -193,8 +197,8 @@ def test_training_zero3_1():
     )
 
     assert within_range(
-        summary_dict["total_training_latency_using_flops"] / 3600 / 24, 90,
-        TOLERANCE)
+        summary_dict["total_training_latency_using_flops"] / 3600 / 24, 90, TOLERANCE
+    )
 
 
 # megatron-lm paper https://arxiv.org/abs/2104.04473 Table 2
@@ -216,9 +220,9 @@ def test_training_zero3_2():
     model_config = get_model_config_by_name(model_name)
     gpu_config = get_gpu_config_by_name(gpu_name)
     dtype_config = get_dtype_config_by_name(dtype_name)
-    parallel_config = ParallelismConfig(tp_size=tp_size,
-                                        pp_size=pp_size,
-                                        dp_size=dp_size)
+    parallel_config = ParallelismConfig(
+        tp_size=tp_size, pp_size=pp_size, dp_size=dp_size
+    )
 
     analysis = LLMAnalysis(
         model_config,
@@ -236,8 +240,8 @@ def test_training_zero3_2():
     )
 
     assert within_range(
-        summary_dict["total_training_latency_using_flops"] / 3600 / 24, 136,
-        TOLERANCE)
+        summary_dict["total_training_latency_using_flops"] / 3600 / 24, 136, TOLERANCE
+    )
 
 
 # deepspeed megatron mt-nlg-530b paper https://arxiv.org/abs/2201.11990
@@ -259,9 +263,9 @@ def test_training_mt_nlg_1():
     model_config = get_model_config_by_name(model_name)
     gpu_config = get_gpu_config_by_name(gpu_name)
     dtype_config = get_dtype_config_by_name(dtype_name)
-    parallel_config = ParallelismConfig(tp_size=tp_size,
-                                        pp_size=pp_size,
-                                        dp_size=dp_size)
+    parallel_config = ParallelismConfig(
+        tp_size=tp_size, pp_size=pp_size, dp_size=dp_size
+    )
 
     analysis = LLMAnalysis(
         model_config,
@@ -278,8 +282,7 @@ def test_training_mt_nlg_1():
         ds_zero=DSZeRO.STAGE_3,
     )
 
-    assert within_range(summary_dict["latency_per_iter_using_flops"], 60.0,
-                        TOLERANCE)
+    assert within_range(summary_dict["latency_per_iter_using_flops"], 60.0, TOLERANCE)
 
 
 # deepspeed megatron mt-nlg-530b paper https://arxiv.org/abs/2201.11990
@@ -301,9 +304,9 @@ def test_training_mt_nlg_2():
     model_config = get_model_config_by_name(model_name)
     gpu_config = get_gpu_config_by_name(gpu_name)
     dtype_config = get_dtype_config_by_name(dtype_name)
-    parallel_config = ParallelismConfig(tp_size=tp_size,
-                                        pp_size=pp_size,
-                                        dp_size=dp_size)
+    parallel_config = ParallelismConfig(
+        tp_size=tp_size, pp_size=pp_size, dp_size=dp_size
+    )
 
     analysis = LLMAnalysis(
         model_config,
@@ -318,10 +321,9 @@ def test_training_mt_nlg_2():
         total_num_tokens=total_num_tokens,
         activation_recomputation=activation_recomputation,
         ds_zero=DSZeRO.STAGE_3,
-        flash_attn=False)
+        flash_attn=False,
+    )
 
-    assert within_range(summary_dict["latency_per_iter_using_flops"], 50.2,
-                        TOLERANCE)
+    assert within_range(summary_dict["latency_per_iter_using_flops"], 50.2, TOLERANCE)
 
-    assert _latency_to_string(
-        summary_dict["latency_per_iter_using_flops"]) == "49.98 s"
+    assert _latency_to_string(summary_dict["latency_per_iter_using_flops"]) == "49.98 s"

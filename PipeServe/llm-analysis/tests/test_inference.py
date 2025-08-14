@@ -13,9 +13,12 @@
 # limitations under the License.
 
 from llm_analysis.analysis import LLMAnalysis
-from llm_analysis.config import (ParallelismConfig, get_dtype_config_by_name,
-                                 get_gpu_config_by_name,
-                                 get_model_config_by_name)
+from llm_analysis.config import (
+    ParallelismConfig,
+    get_dtype_config_by_name,
+    get_gpu_config_by_name,
+    get_model_config_by_name,
+)
 from llm_analysis.utils import within_range
 
 TOLERANCE = 0.1
@@ -47,8 +50,7 @@ def test_fastertransformer_13b_tp1():
         num_tokens_to_generate=10,
     )
 
-    assert within_range(summary_dict["decode_latency"] * 1000, 17.07,
-                        TOLERANCE)
+    assert within_range(summary_dict["decode_latency"] * 1000, 17.07, TOLERANCE)
 
 
 def test_llama2_70b():
@@ -63,8 +65,7 @@ def test_llama2_70b():
     dtype_config = get_dtype_config_by_name(dtype_name)
     parallel_config = ParallelismConfig(tp_size=tp_size)
 
-    analysis = LLMAnalysis(model_config, gpu_config, dtype_config,
-                           parallel_config)
+    analysis = LLMAnalysis(model_config, gpu_config, dtype_config, parallel_config)
 
     summary_dict = analysis.inference(
         batch_size_per_gpu=batch_size_per_gpu,

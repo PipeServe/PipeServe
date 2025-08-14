@@ -17,10 +17,10 @@ def _num_to_string(num, precision=2, divisor=1024):
     if num is None:
         return None
     if num < 0:
-        sign = '-'
+        sign = "-"
         num = -num
     else:
-        sign = ''
+        sign = ""
     if num is None:
         return "None"
     if num // divisor**4 > 0:
