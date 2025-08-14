@@ -32,7 +32,7 @@ def main():
     print("=" * 60)
     
     # Configuration file path
-    script_dir = os.path.dirname(__file__)  # 获取当前脚本的目录
+    script_dir = os.path.dirname(__file__)
     config_file = os.path.join(script_dir, 'config.json')
     result_file = os.path.join(script_dir, 'result.json')
     

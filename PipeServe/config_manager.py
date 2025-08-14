@@ -52,11 +52,6 @@ class BatchConfigParams:
     
     # Algorithm selection
     algorithm: str = "both"  # "brute-force", "bucket", "both"
-    
-    
-    # Output control
-    verbose: bool = False
-    quiet: bool = False
 
 
 @dataclass
