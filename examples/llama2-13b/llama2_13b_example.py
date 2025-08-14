@@ -18,6 +18,7 @@ Requirements:
     - RTX6000 or similar high-memory GPU configuration
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -35,9 +36,10 @@ def main():
     print("=" * 60)
     
     # Configuration file path
-    config_file = "./config.json"
-    result_file = "./result.json"
-    
+    script_dir = os.path.dirname(__file__)  # 获取当前脚本的目录
+    config_file = os.path.join(script_dir, 'config.json')
+    result_file = os.path.join(script_dir, 'result.json')
+
     print(f"Loading configuration from: {config_file}")
     
     try:
