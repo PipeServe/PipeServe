@@ -63,8 +63,8 @@ def main():
         print("\nStarting optimization...")
         print("Note: 13B model optimization may take longer due to increased complexity...")
         
-        # Run optimization and save results to JSON
-        result = configurator.optimize_to_json(result_file, algorithm="both")
+        # Run optimization and save results to JSON (uses algorithm from config file)
+        result = configurator.optimize_to_json(result_file)
         
         if result:
             print(f"\nOptimization completed! Results saved to: {result_file}")

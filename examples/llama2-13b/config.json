@@ -9,7 +9,7 @@
     "pp_size": 1,
     "sp_size": 1,
     "dp_size": 1,
-    "algorithm": "both",
+    "algorithm": "bucket",
     "verbose": false,
     "quiet": false
 }

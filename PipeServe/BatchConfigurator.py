@@ -563,13 +563,14 @@ class BatchConfigurator:
     def optimize_to_json(
         self, 
         result_file_path: str, 
-        algorithm: str = "both"
+        algorithm: str = None
     ) -> BatchOptimizationResult:
         """Run batch optimization and save results to JSON file
 
         Args:
             result_file_path (str): Path to save the optimization results
-            algorithm (str): Algorithm to use ("brute-force", "bucket", "both")
+            algorithm (str): Algorithm to use ("brute-force", "bucket", "both"). 
+                           If None, uses the algorithm from config file
 
         Returns:
             BatchOptimizationResult: Optimization results
@@ -581,9 +582,17 @@ class BatchConfigurator:
         """
         import time
 
+        # Use algorithm from config if not specified
+        if algorithm is None and hasattr(self, '_config_params'):
+            algorithm = self._config_params.algorithm
+        elif algorithm is None:
+            algorithm = "both"  # fallback default
+
         # Initialize result tracking
         best_result = None
         total_start_time = time.time()
+        
+        print(f"Using optimization algorithm: {algorithm}")
         
         # Run algorithms based on selection
         if algorithm in ["brute-force", "both"]:

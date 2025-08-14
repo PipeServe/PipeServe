@@ -49,7 +49,7 @@ def main():
         print("\nStarting optimization...")
         
         # Run optimization and save results to JSON
-        result = configurator.optimize_to_json(result_file, algorithm="both")
+        result = configurator.optimize_to_json(result_file)
         
         if result:
             print(f"\nOptimization completed! Results saved to: {result_file}")

@@ -9,14 +9,14 @@
   "best_delta": 0.012967713022485172,
   "best_cost": 0.636539049838353,
   "max_stage": 3,
-  "max_layer_per_gpu": 16,
+  "max_layer_per_gpu": 17,
   "prefill_latency": 0.7864780173885602,
   "decode_latency": 0.6714326716844181,
   "total_prefill_latency": 0.9124134434335305,
   "total_decode_latency": 0.7973680977293884,
   "dfs_count": 0,
   "dfs_original_count": 307,
-  "solve_time": 1.6666364669799805,
+  "solve_time": 0.09913134574890137,
   "meets_slo": true,
   "config_params": {
     "model": "Llama-2-13b",
@@ -29,7 +29,7 @@
     "pp_size": 1,
     "sp_size": 1,
     "dp_size": 1,
-    "algorithm": "both",
+    "algorithm": "bucket",
     "verbose": false,
     "quiet": false
   }

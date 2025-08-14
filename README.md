@@ -31,3 +31,40 @@ git clone https://github.com/PipeServe/PipeServe.git
 cd PipeServe
 pip install -r requirements.txt
 ```
+
+
+
+### Running the Prototype System
+
+To run PipeServe, begin by creating a JSON configuration file for your model and configrations. Here is an example configuration for the model `Llama2-7b`:
+
+```json
+{
+    "model": "Llama-2-7b",
+    "gpu_name": "t4-pcie-16gb",
+    "dtype": "w16a16e16",
+    "max_chunk_size": 256,
+    "slo_prefill": 1.5,
+    "slo_decode": 0.5,
+    "tp_size": 1,
+    "pp_size": 1,
+    "sp_size": 1,
+    "dp_size": 1,
+    "algorithm": "both",
+    "verbose": false,
+    "quiet": false
+}
+```
+
+The following Python script demonstrates how PipeServe uses this configuration file to generate an effective batch configuration and model partitioning plan:
+
+```python
+from BatchConfigurator import BatchConfigurator
+
+if __name__ == "__main__":
+    config_file = "./config.json"
+    configurator = BatchConfigurator.from_json_config(config_file)
+    min_cost = GPUAllocator.gpu_allocator(model)
+    with open("./result.json", "w") as f:
+        f.write(json.dumps(min_cost))
+```
