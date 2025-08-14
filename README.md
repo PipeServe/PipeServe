@@ -63,7 +63,7 @@ from BatchConfigurator import BatchConfigurator
 
 if __name__ == "__main__":
     config_file = "config.json"
-    result_file = ".result.json"
+    result_file = "result.json"
     configurator = BatchConfigurator.from_json_config(config_file)
     result = configurator.optimize_to_json(result_file)
 ```
