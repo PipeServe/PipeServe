@@ -1,14 +1,11 @@
 import argparse
 import logging
 import math
-import sys
 import time
 from copy import deepcopy
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-# Add llm-analysis to Python path
-sys.path.append(str(Path(__file__).parent / "llm-analysis"))
 
 from llm_analysis.analysis import LLMAnalysis
 from llm_analysis.config import (
@@ -22,7 +19,11 @@ from llm_analysis.logger import logger
 try:
     from .gpu_config import GPU, load_gpus_from_config
     from .ModelPartitioner import ModelPartitioner
-    from .config_manager import BatchConfigParams, BatchOptimizationResult, ConfigManager
+    from .config_manager import (
+        BatchConfigParams,
+        BatchOptimizationResult,
+        ConfigManager,
+    )
 except ImportError:
     from gpu_config import GPU, load_gpus_from_config
     from ModelPartitioner import ModelPartitioner
@@ -528,7 +529,7 @@ class BatchConfigurator:
         )
 
     @classmethod
-    def from_json_config(cls, config_file_path: str) -> 'BatchConfigurator':
+    def from_json_config(cls, config_file_path: str) -> "BatchConfigurator":
         """Create BatchConfigurator instance from JSON configuration file
 
         Args:
@@ -543,33 +544,31 @@ class BatchConfigurator:
         """
         # Load configuration from JSON
         config = ConfigManager.load_config_from_json(config_file_path)
-        
+
         # Create analysis instance from config
         analysis = ConfigManager.create_analysis_from_config(config)
-        
+
         # Create and return BatchConfigurator instance
         configurator = cls(
             analysis=analysis,
             slo_p=config.slo_prefill,
             slo_d=config.slo_decode,
-            max_chunk_size=config.max_chunk_size
+            max_chunk_size=config.max_chunk_size,
         )
-        
+
         # Store config for later use
         configurator._config_params = config
-        
+
         return configurator
 
     def optimize_to_json(
-        self, 
-        result_file_path: str, 
-        algorithm: str = None
+        self, result_file_path: str, algorithm: str = None
     ) -> BatchOptimizationResult:
         """Run batch optimization and save results to JSON file
 
         Args:
             result_file_path (str): Path to save the optimization results
-            algorithm (str): Algorithm to use ("brute-force", "bucket", "both"). 
+            algorithm (str): Algorithm to use ("brute-force", "bucket", "both").
                            If None, uses the algorithm from config file
 
         Returns:
@@ -583,7 +582,7 @@ class BatchConfigurator:
         import time
 
         # Use algorithm from config if not specified
-        if algorithm is None and hasattr(self, '_config_params'):
+        if algorithm is None and hasattr(self, "_config_params"):
             algorithm = self._config_params.algorithm
         elif algorithm is None:
             algorithm = "both"  # fallback default
@@ -591,16 +590,16 @@ class BatchConfigurator:
         # Initialize result tracking
         best_result = None
         total_start_time = time.time()
-        
+
         print(f"Using optimization algorithm: {algorithm}")
-        
+
         # Run algorithms based on selection
         if algorithm in ["brute-force", "both"]:
             print("\n=== Running Brute Force Algorithm ===")
             start_time = time.time()
             brute_force_result = self._run_brute_force_with_result()
             brute_force_time = time.time() - start_time
-            
+
             if brute_force_result:
                 brute_force_result.solve_time = brute_force_time
                 best_result = brute_force_result
@@ -611,11 +610,14 @@ class BatchConfigurator:
             start_time = time.time()
             bucket_result = self._run_bucket_with_result()
             bucket_time = time.time() - start_time
-            
+
             if bucket_result:
                 bucket_result.solve_time = bucket_time
                 # Choose the better result (lower cost)
-                if best_result is None or bucket_result.best_cost < best_result.best_cost:
+                if (
+                    best_result is None
+                    or bucket_result.best_cost <= best_result.best_cost
+                ):
                     best_result = bucket_result
                 print(f"Bucket solve time: {bucket_time:.2f} s")
 
@@ -625,16 +627,17 @@ class BatchConfigurator:
             return None
 
         # Add configuration parameters to result
-        if hasattr(self, '_config_params'):
+        if hasattr(self, "_config_params"):
             from dataclasses import asdict
+
             best_result.config_params = asdict(self._config_params)
-        
+
         # Save result to JSON file
         ConfigManager.save_result_to_json(best_result, result_file_path)
-        
+
         print(f"\nOptimization completed! Results saved to: {result_file_path}")
         print(f"Total optimization time: {time.time() - total_start_time:.2f} s")
-        
+
         return best_result
 
     def _run_brute_force_with_result(self) -> Optional[BatchOptimizationResult]:
@@ -645,7 +648,7 @@ class BatchConfigurator:
         best_batch_d: int = 1
         best_batch_p: int = 1
         best_cost: float = 1000000
-        
+
         found_solution = False
 
         # Iterate through prefill batch sizes
@@ -720,16 +723,22 @@ class BatchConfigurator:
 
             if self.max_stage == 1 and found_solution:
                 break
-        
+
         if not found_solution:
             return None
-            
+
         # Calculate latencies
-        prefill_latency = self.analysis.inference(best_batch_p, self.max_chunk_size)["prefill_latency"]
+        prefill_latency = self.analysis.inference(best_batch_p, self.max_chunk_size)[
+            "prefill_latency"
+        ]
         decode_latency = self.analysis.inference(best_batch_d, 1)["decode_latency"]
-        total_prefill_latency = prefill_latency + (self.max_stage - 1) * (self.transfer_p + best_delta)
-        total_decode_latency = decode_latency + (self.max_stage - 1) * (self.transfer_d + best_delta)
-        
+        total_prefill_latency = prefill_latency + (self.max_stage - 1) * (
+            self.transfer_p + best_delta
+        )
+        total_decode_latency = decode_latency + (self.max_stage - 1) * (
+            self.transfer_d + best_delta
+        )
+
         # Create result object
         result = BatchOptimizationResult(
             best_batch_p=best_batch_p,
@@ -744,12 +753,16 @@ class BatchConfigurator:
             total_prefill_latency=total_prefill_latency,
             total_decode_latency=total_decode_latency,
             dfs_count=self.partitioner.dfs_count if self.partitioner else 0,
-            dfs_original_count=self.partitioner.dfs_original_count if self.partitioner else 0,
-            meets_slo=self.check_slo(best_batch_p, best_batch_d, best_delta)
+            dfs_original_count=self.partitioner.dfs_original_count
+            if self.partitioner
+            else 0,
+            meets_slo=self.check_slo(best_batch_p, best_batch_d, best_delta),
         )
-        
-        print(f"best batch_p: {best_batch_p}, best batch_d: {best_batch_d}, partition: {best_G}, with delta: {best_delta}")
-        
+
+        print(
+            f"best batch_p: {best_batch_p}, best batch_d: {best_batch_d}, partition: {best_G}, with delta: {best_delta}"
+        )
+
         return result
 
     def _run_bucket_with_result(self) -> Optional[BatchOptimizationResult]:
@@ -760,7 +773,7 @@ class BatchConfigurator:
         best_batch_d: int = 1
         best_batch_p: int = 1
         best_cost: float = 1000000
-        
+
         found_solution = False
 
         # Get maximum feasible batch sizes using binary search
@@ -837,16 +850,22 @@ class BatchConfigurator:
                         best_delta = delta
                         best_cost = cost
                 break
-        
+
         if not found_solution:
             return None
-            
+
         # Calculate latencies
-        prefill_latency = self.analysis.inference(best_batch_p, self.max_chunk_size)["prefill_latency"]
+        prefill_latency = self.analysis.inference(best_batch_p, self.max_chunk_size)[
+            "prefill_latency"
+        ]
         decode_latency = self.analysis.inference(best_batch_d, 1)["decode_latency"]
-        total_prefill_latency = prefill_latency + (self.max_stage - 1) * (self.transfer_p + best_delta)
-        total_decode_latency = decode_latency + (self.max_stage - 1) * (self.transfer_d + best_delta)
-        
+        total_prefill_latency = prefill_latency + (self.max_stage - 1) * (
+            self.transfer_p + best_delta
+        )
+        total_decode_latency = decode_latency + (self.max_stage - 1) * (
+            self.transfer_d + best_delta
+        )
+
         # Create result object
         result = BatchOptimizationResult(
             best_batch_p=best_batch_p,
@@ -861,12 +880,16 @@ class BatchConfigurator:
             total_prefill_latency=total_prefill_latency,
             total_decode_latency=total_decode_latency,
             dfs_count=self.partitioner.dfs_count if self.partitioner else 0,
-            dfs_original_count=self.partitioner.dfs_original_count if self.partitioner else 0,
-            meets_slo=self.check_slo(best_batch_p, best_batch_d, best_delta)
+            dfs_original_count=self.partitioner.dfs_original_count
+            if self.partitioner
+            else 0,
+            meets_slo=self.check_slo(best_batch_p, best_batch_d, best_delta),
         )
-        
-        print(f"best batch_p: {best_batch_p}, best batch_d: {best_batch_d}, partition: {best_G}, with delta: {best_delta}")
-        
+
+        print(
+            f"best batch_p: {best_batch_p}, best batch_d: {best_batch_d}, partition: {best_G}, with delta: {best_delta}"
+        )
+
         return result
 
     @staticmethod
